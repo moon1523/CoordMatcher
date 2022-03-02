@@ -1,16 +1,21 @@
 #ifndef CHARUCOSYNC_HH_
 #define CHARUCOSYNC_HH_
 
+#include <Eigen/Sparse>
+#include <Eigen/Geometry>
+#include <Eigen/Eigenvalues>
+
 #include <opencv2/aruco/charuco.hpp>
 #include <opencv2/highgui.hpp>
 #include <opencv2/imgproc.hpp>
-
-#include <Eigen/Sparse>
-#include <Eigen/Geometry>
+#include <opencv2/core/eigen.hpp> // this header should be invoked after <Eigen/Sparse>
+#include <opencv2/calib3d.hpp>
 
 #include <string>
 #include <iostream>
 #include <fstream>
+#include <algorithm>
+#include <set>
 
 using namespace std;
 using namespace cv;
@@ -21,6 +26,8 @@ enum class BoardType
 	TEST,
 	HYUMC,
 };
+
+typedef pair<int,int> MD;
 
 class CharucoSync
 {
@@ -36,8 +43,12 @@ public:
     void ClearData();
     void TickSwitch() { getPose = !getPose; }
     void SetScalingFactor(float s);
-    vector<Eigen::Affine3d> CoordToReferenceCoord();
-    void WriteCoordToReferenceCoord(vector<Eigen::Affine3d> c2r);
+
+    void calculate_transformation_matrices_for_detected_boardID(int viewNo);
+    void calculate_empty_transformation_matrices_from_averaged_transfrmation_matrices();
+    void averaging_stacked_transformation_matrices();
+
+    void weighted_averaging_stacked_transformation_matrices();
 
 private:
     cv::Ptr<cv::aruco::CharucoBoard> board;
@@ -49,12 +60,11 @@ private:
     float sf;
 
     //avg values
-    int frameNo;
     bool isStack;
     int boardType;
 
     // vector
-    int boardNo, viewNo;
+    int boardNo, markerNo;
 	vector<cv::Ptr<cv::aruco::CharucoBoard>> boardVec;
 	vector<cv::Ptr<cv::aruco::Dictionary>> dictionaryVec;
 
@@ -69,8 +79,29 @@ private:
 	vector<Vector4d> 		 avg10_qVec;
 	vector<vector<Vector4d>> cum_qVec;
 	vector<Vec3d> 			 sum_tVec;
+	vector<vector<double>> cum_wVec;
+	vector<double>         sum_wVec;
 
-	vector<vector<Eigen::Affine3d>> c2rVec;
+	// To reference coordinate
+	vector<int> board_frameNo;
+	vector<int> detected_boardID_oneView;
+	vector<vector<int>> detected_boardID_viewVec;
+
+	map<MD, vector<Eigen::Affine3d>> cum_m2dMap;
+	map<MD, Eigen::Affine3d> avg_m2dMap;
+	map<MD, vector<double>> cum_m2dwMap;
+	map<MD, double> avg_m2dwMap;
+
+	vector<MD> mdVec, emptyVec;
+
+
+
+//	map<int, int> dm;
+//	map<MD, Eigen::Affine3d> m2dMap;
+//	vector<Eigen::Affine3d>  r2d;
+//	vector<Eigen::Affine3d> R2D;
+
+
 
 
 

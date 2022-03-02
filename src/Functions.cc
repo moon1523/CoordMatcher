@@ -83,13 +83,12 @@ void WritePointCloud(const k4a_image_t point_image,
                      const k4a_image_t color_image,
                      string fileName)
 {
+	cout << "WritePointCloud()" << endl;
     vector<RowVector3d> xyz;
     vector<RowVector3i> rgb;
 
     int width  = k4a_image_get_width_pixels(point_image);
     int height = k4a_image_get_height_pixels(color_image);
-
-    cout << "resolutions: " << width <<" x " << height << endl;
 
     int16_t *point_image_data = (int16_t *)(void *)k4a_image_get_buffer(point_image);
     uint8_t *color_image_data = k4a_image_get_buffer(color_image);
@@ -113,7 +112,6 @@ void WritePointCloud(const k4a_image_t point_image,
         rgb.push_back(RowVector3i(r,g,b));
     }
 
-    cout << "WritePointCloud()" << endl;
     ofstream ofs(fileName + ".ply");
     ofs << "ply" << endl;
     ofs << "format ascii 1.0" << endl;
@@ -136,9 +134,10 @@ void WriteTrasnformedPointCloud(const k4a_image_t point_image,
                      			const k4a_image_t color_image,
                      			string fileName)
 {
-	ifstream ifs("home");
+	cout << "WriteTransformedPointCloud()" << endl;
+	ifstream ifs("ori_CoordData");
 	if(!ifs.is_open()) {
-		cerr << "world_coord is not opened" << endl;
+		cerr << "ori_CoordData was not opened" << endl;
 		exit(1);
 	}
 
@@ -148,23 +147,17 @@ void WriteTrasnformedPointCloud(const k4a_image_t point_image,
 	ifs >> dump >> x >> y >> z >> w;
 	Quaterniond quat(w,x,y,z);
 	ifs >> dump >> x >> y >> z;
-	Vector3d trans(x*10,y*10,z*10);
-//	cout << quat.matrix() << endl;
-//	cout << trans.matrix() << endl;
+	Vector3d trans(x*10,y*10,z*10); // cm => mm
 
 	Affine3d a;
 	a.translation() = trans;
-	a.linear() = quat.matrix();
-//	cout << a.matrix() << endl << endl;
-//	cout << a.inverse().matrix() << endl;
+	a.linear() = quat.normalized().matrix();
 
 	vector<RowVector3d> xyz;
 	vector<RowVector3i> rgb;
 
 	int width  = k4a_image_get_width_pixels(point_image);
 	int height = k4a_image_get_height_pixels(color_image);
-
-	cout << "resolutions: " << width <<" x " << height << endl;
 
 	int16_t *point_image_data = (int16_t *)(void *)k4a_image_get_buffer(point_image);
 	uint8_t *color_image_data = k4a_image_get_buffer(color_image);
@@ -173,15 +166,10 @@ void WriteTrasnformedPointCloud(const k4a_image_t point_image,
 		if (point_image_data[3*i+2] == 0) continue;
 		Vector3d pointVec(point_image_data[3*i+0], point_image_data[3*i+1], point_image_data[3*i+2]);
 		pointVec = a.inverse() * pointVec;
+
 		double X = pointVec(0);
 		double Y = pointVec(1);
 		double Z = pointVec(2);
-
-
-//		pointVec = pointVec - trans;
-//		double X = (quat.matrix().inverse() * pointVec)(0);
-//		double Y = (quat.matrix().inverse() * pointVec)(1);
-//		double Z = (quat.matrix().inverse() * pointVec)(2);
 
 		int b = color_image_data[4 * i + 0];
 		int g = color_image_data[4 * i + 1];
@@ -195,7 +183,6 @@ void WriteTrasnformedPointCloud(const k4a_image_t point_image,
 		rgb.push_back(RowVector3i(r,g,b));
 	}
 
-	cout << "WriteTransformedPointCloud()" << endl;
 	ofstream ofs(fileName + ".ply");
 	ofs << "ply" << endl;
 	ofs << "format ascii 1.0" << endl;
@@ -215,4 +202,106 @@ void WriteTrasnformedPointCloud(const k4a_image_t point_image,
 
 
 }
+
+void WriteTrasnformedPointCloudToRefCoord(const k4a_image_t point_image,
+                     					  const k4a_image_t color_image,
+										  string fileName)
+{
+	cout << "WriteTrasnformedPointCloudToRefCoord()" << endl;
+
+	string dump;
+	double x,y,z,w;
+
+	ifstream ifs("m2dQT.dat");
+	if(!ifs.is_open()) { cerr << "ifs" << endl;	exit(1); }
+	vector<Eigen::Affine3d> T_prime;
+
+	T_prime.push_back(Affine3d::Identity());
+	for (int i=0; i<3; i++) {
+		int m, d;
+		ifs >> m >> d;
+		ifs >> dump >> x >> y >> z >> w;
+		Quaterniond quat(w,x,y,z);
+		ifs >> dump >> x >> y >> z;
+		Vector3d trans(x*10,y*10,z*10); // cm => mm
+
+		Eigen::Affine3d a;
+		a.linear() = quat.normalized().matrix();
+		a.translation() = trans;
+		T_prime.push_back(a);
+	}
+	ifs.close();
+
+	ifstream ifs2("view0_CoordData");
+	if(!ifs2.is_open()) { cerr << "ifs2" << endl; exit(1); }
+	vector<Eigen::Affine3d> T;
+
+	for (int i=0; i<4; i++) {
+		ifs2 >> dump >> x >> y >> z >> w;
+		Quaterniond quat(w,x,y,z);
+		ifs2 >> dump >> x >> y >> z;
+		Vector3d trans(x*10,y*10,z*10); // cm => mm
+
+		Eigen::Affine3d a;
+		a.linear() = quat.normalized().matrix();
+		a.translation() = trans;
+		T.push_back(a);
+	}
+	ifs2.close();
+
+	vector<Eigen::Affine3d> Tf;
+	for (int i=0;i<4;i++) {
+		Tf.push_back(T_prime[i] * T[i].inverse()); // T_0.inverse() = T_0->1 * T_1.inverse()
+	}
+
+	vector<RowVector3d> xyz;
+	vector<RowVector3i> rgb;
+
+	int width  = k4a_image_get_width_pixels(point_image);
+	int height = k4a_image_get_height_pixels(color_image);
+
+	int16_t *point_image_data = (int16_t *)(void *)k4a_image_get_buffer(point_image);
+	uint8_t *color_image_data = k4a_image_get_buffer(color_image);
+
+	for (int i=0; i<width*height; i++) {
+		if (point_image_data[3*i+2] == 0) continue;
+		Vector3d pointVec(point_image_data[3*i+0], point_image_data[3*i+1], point_image_data[3*i+2]);
+		pointVec = Tf[1] * pointVec;
+
+		double X = pointVec(0);
+		double Y = pointVec(1);
+		double Z = pointVec(2);
+
+		int b = color_image_data[4 * i + 0];
+		int g = color_image_data[4 * i + 1];
+		int r = color_image_data[4 * i + 2];
+		uint8_t alpha = color_image_data[4 * i + 3];
+
+		if (b == 0 && g == 0 && r == 0 && alpha == 0)
+			continue;
+
+		xyz.push_back(RowVector3d(X,Y,Z));
+		rgb.push_back(RowVector3i(r,g,b));
+	}
+
+	ofstream ofs(fileName + ".ply");
+	ofs << "ply" << endl;
+	ofs << "format ascii 1.0" << endl;
+	ofs << "element vertex "  << xyz.size() << endl;
+	ofs << "property float x" << endl;
+	ofs << "property float y" << endl;
+	ofs << "property float z" << endl;
+	ofs << "property uchar red" << endl;
+	ofs << "property uchar green" << endl;
+	ofs << "property uchar blue" << endl;
+	ofs << "end_header" << endl;
+
+	for (size_t i=0;i<xyz.size();i++) {
+		ofs << xyz[i] << " " << rgb[i] << endl;
+	}
+	ofs.close();
+
+
+}
+
 

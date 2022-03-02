@@ -46,6 +46,9 @@ void WritePointCloud(const k4a_image_t point_image,
 void WriteTrasnformedPointCloud(const k4a_image_t point_image, 
                                 const k4a_image_t color_image,
                                 string fileName);
+void WriteTrasnformedPointCloudToRefCoord(const k4a_image_t point_image,
+                                          const k4a_image_t color_image,
+										  string fileName);
 
 
 class Timer
